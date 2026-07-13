@@ -21,6 +21,7 @@ from anomalies import pin_setup, add_forward_returns, add_regime_labels, detect_
 from stats_spine import regime_two_sample, return_persistence, event_study, purged_walk_forward
 from flow_engine import live_option_flow, add_flow_features, kyle_lambda, cusum_events, significant_threshold
 from validate import fetch_oracle, within
+from calendar_layer import next_event, catalyst_read
 
 VIOLET, GREEN, RED, MUTED, INK = "#9A86FF", "#46B98A", "#E5615E", "#98A2B1", "#E7EBF2"
 st.set_page_config(page_title="BTC Dealer Positioning · Statistical Evidence",
@@ -49,6 +50,8 @@ def get_profile():
     recs, spot, _ = build_chain("BTC"); s, c, p, n = gamma_by_strike(recs); return s, c, p, spot
 @st.cache_data(ttl=300)
 def get_flow(): return live_option_flow("BTC")
+@st.cache_data(ttl=900)
+def get_catalyst(): return next_event()
 @st.cache_data(ttl=120)
 def get_ohlc(res, bars): return fetch_ohlc(res, bars)
 
@@ -137,6 +140,13 @@ with t1:
         pc[i].metric(labels[k], "✅ yes" if ok else "❌ no")
     pc[3].metric("Verdict", "PIN LIKELY" if pin["pin_likely"] else f"{pin['conditions_met']}/3",
                  f"{pin['distance_to_max_pain_pct']}% to max pain")
+
+    cat = catalyst_read(pin["pin_likely"], get_catalyst())
+    if cat.get("has_catalyst"):
+        col = RED if cat.get("level") == "break-risk" else VIOLET if cat.get("imminent") else MUTED
+        st.markdown(f"<div class='verdict' style='border-left-color:{col}'>{cat['message']}"
+                    "<br><span style='color:#98A2B1;font-size:12px'>Macro catalyst (Forex Factory) — "
+                    "a live overlay, not a validated signal.</span></div>", unsafe_allow_html=True)
 
     st.subheader("Strike gamma profile")
     strikes, call, put, spot = get_profile()

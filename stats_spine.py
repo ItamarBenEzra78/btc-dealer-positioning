@@ -176,6 +176,19 @@ def purged_walk_forward(df, target_col, feature_cols, horizon=3, up_thresh=0.02,
     }
 
 
+def garch_persistence(df, ret_col="logret"):
+    """GARCH(1,1) volatility clustering — the test we skipped when R's rugarch
+    wouldn't install. `arch` does it natively in Python. persistence = alpha+beta;
+    > 0.9 means strong, long-memory clustering (the article's regime thesis)."""
+    from arch import arch_model
+    r = df[ret_col].dropna().values * 100
+    res = arch_model(r, vol="Garch", p=1, q=1, dist="t", mean="Constant").fit(disp="off")
+    a = float(res.params.get("alpha[1]", float("nan")))
+    b = float(res.params.get("beta[1]", float("nan")))
+    return {"alpha": round(a, 4), "beta": round(b, 4),
+            "persistence": round(a + b, 4), "strong_clustering": (a + b) > 0.9}
+
+
 def _p(x):
     return f"{x:.4f}" + ("  ***" if x < 0.01 else "  **" if x < 0.05 else "  (ns)")
 
@@ -228,6 +241,14 @@ def main():
         print(f"    base rate={lp['base_rate']}  Brier={lp['brier']}  (train {lp['n_train']} / test {lp['n_test']})")
         print(f"    coefficients: {lp['coefficients']}")
         print(f"    reliability (pred vs observed): {lp['reliability_pred_vs_obs']}")
+
+    print("\n[G] GARCH(1,1) — volatility clustering (Python arch, replaces rugarch)")
+    try:
+        g = garch_persistence(df)
+        tag = "strong long-memory clustering" if g["strong_clustering"] else "weak"
+        print(f"    alpha={g['alpha']}  beta={g['beta']}  persistence={g['persistence']}  -> {tag}")
+    except Exception as e:
+        print(f"    garch unavailable: {e}")
 
     print("\n[6] PURGED WALK-FORWARD — leakage-safe skill check (Brier)")
     pw = purged_walk_forward(df, "fwd_ret_3", ["elevated", "dvol_chg_z", "dvol"])

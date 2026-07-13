@@ -4,4 +4,13 @@ scipy
 scikit-learn
 plotly
 streamlit
+fastapi
+uvicorn[standard]
+sqlalchemy
+apscheduler
+httpx
+tenacity
+arch
+pytest
+# for Postgres (optional): psycopg[binary]
 # R side (separate): install.packages(c("MSwM","changepoint"))

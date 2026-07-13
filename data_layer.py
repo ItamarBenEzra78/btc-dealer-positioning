@@ -90,8 +90,13 @@ def save_snapshot(currency="BTC"):
     os.makedirs(DATA_DIR, exist_ok=True)
     s = snapshot(currency)
     s["captured_at"] = datetime.fromtimestamp(s["asof"], tz=timezone.utc).isoformat()
-    with open(SNAP_FILE, "a") as f:
+    with open(SNAP_FILE, "a") as f:                 # keep jsonl as a durable backup
         f.write(json.dumps(s, default=str) + "\n")
+    try:                                            # and persist to the database
+        import db
+        db.init_db(); db.save_snapshot(s)
+    except Exception:
+        pass
     return s
 
 
