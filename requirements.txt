@@ -1,0 +1,7 @@
+numpy
+pandas
+scipy
+scikit-learn
+plotly
+streamlit
+# R side (separate): install.packages(c("MSwM","changepoint"))
