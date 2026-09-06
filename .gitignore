@@ -3,4 +3,17 @@ __pycache__/
 .DS_Store
 data/*.log
 .streamlit/credentials.toml
+.streamlit/secrets.toml
 data/app.db
+
+# local environment overrides (see .env.example for the template)
+.env
+.env.*
+!.env.example
+
+# screenshots for the README — capture locally, add explicitly when ready
+docs/screenshots/*.png
+docs/screenshots/*.gif
+docs/screenshots/*.jpg
+docs/screenshots/*.mp4
+!docs/screenshots/README.md

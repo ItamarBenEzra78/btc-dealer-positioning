@@ -242,7 +242,7 @@ with t3:
         st.markdown(
             f"<div class='verdict'><b>Leakage-safe verdict (purged walk-forward):</b> "
             f"Brier model <b>{pw['brier_model']}</b> vs base-rate <b>{pw['brier_baserate']}</b> "
-            f"(edge {skill:+.4f}) → {tag}. Direction stays hard — exactly the honest result most tools hide.</div>",
+            f"(edge {skill:+.4f}) → {tag}. Direction remains unpredictable in this sample — reported as found.</div>",
             unsafe_allow_html=True)
 
 # ============================ VALIDATION ============================
