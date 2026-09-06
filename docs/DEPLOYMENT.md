@@ -31,30 +31,66 @@ VPS path (see below). The dashboard does not depend on either of them.
   install cleanly (it usually does on Streamlit Cloud), the API layer keeps
   full functionality.
 
-### Manual steps to deploy
+### Pre-flight (verified 2026-09-06)
 
-1. In your GitHub repo, confirm that `dashboard.py`, `requirements.txt`,
-   `.streamlit/config.toml`, `data/market_daily.csv`, and `data/r_regime.csv`
-   are all committed.
-2. Go to <https://share.streamlit.io> and sign in with GitHub.
-3. Click **New app** → pick this repo → branch `master` → main file
-   `dashboard.py` → **Deploy**.
-4. First boot takes 2–5 minutes while dependencies install. Watch the log; if
-   `arch` fails to build, that is fine — it is not needed by the dashboard.
-5. Once the app is up, copy the public URL. Add it to the top of `README.md`
-   as an active Streamlit demo badge.
+| Check | Result |
+|---|---|
+| Entry point | `dashboard.py` at repo root |
+| Dependencies | `requirements.txt` at repo root; installs cleanly into a fresh virtualenv |
+| Secrets / API keys | **none required** — Deribit, CryptoGamma, Forex Factory are public endpoints |
+| Local paths | none; all reads are repo-relative (`data/market_daily.csv`, `data/r_regime.csv`) |
+| Writes at runtime | none from the dashboard code path |
+| Committed data | `data/market_daily.csv` (731 rows), `data/r_regime.csv` (731 rows) |
+| Theme | `.streamlit/config.toml` (dark) — picked up automatically |
+| R | not needed at runtime |
+| Tests | `python -m pytest -q` → 12 passed; GitHub Actions green on 3.10/3.11/3.12 |
 
-### After deploying — add the demo badge
+### Click-by-click
 
-Only *after* the URL is live, add this line under the title in `README.md`
-(replace the placeholder URL):
+1. Open <https://share.streamlit.io> → **Continue with GitHub** → authorise
+   Streamlit to read your repositories (one-time OAuth).
+2. Top-right **Create app** → **Deploy a public app from GitHub**.
+3. Fill in exactly:
+   - **Repository:** `ItamarBenEzra78/btc-dealer-positioning`
+   - **Branch:** `master`
+   - **Main file path:** `dashboard.py`
+   - **App URL** (optional): choose a short slug, e.g.
+     `btc-dealer-positioning` → gives `https://btc-dealer-positioning.streamlit.app`
+4. **Advanced settings** → Python version **3.11** (3.10–3.12 are all CI-tested).
+   Leave **Secrets** empty.
+5. **Deploy**. First build takes 2–5 minutes (streamlit, plotly, scikit-learn,
+   arch). Watch the log; if `arch` fails to build, the dashboard still runs —
+   it is only imported lazily by the API layer.
+6. When the app shows the **Positioning** tab with live numbers, copy the URL.
+
+### After it is live — exact edits
+
+**README.md** — insert as the first line under the title (before the tests
+badge), replacing `<APP-URL>`:
 
 ```markdown
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://YOUR-APP-URL.streamlit.app)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://<APP-URL>.streamlit.app)
 ```
 
-Do **not** add the badge before the app is live — a broken badge looks worse
-than no badge.
+**CV** (`Itamar_Ben_Ezra_Data_Analyst_CV_Final.html`) — the page is at its
+height limit, so add the link on the project **title line**, not as a new
+line. Change
+
+```html
+<span class="t">Statistical Validation of Options-Market Positioning Signals (BTC)</span> <span class="r">Jul 2026</span>
+```
+
+to
+
+```html
+<span class="t">Statistical Validation of Options-Market Positioning Signals (BTC)</span> <span class="r">Live demo: <a href="https://<APP-URL>.streamlit.app"><APP-URL>.streamlit.app</a> · Jul 2026</span>
+```
+
+and in the `.md`, append ` · Live demo: <APP-URL>.streamlit.app` to the same
+title line. Re-render the PDF and confirm it is still one page.
+
+Do **not** add the badge or the CV line before the app is live — a broken
+link looks worse than no link.
 
 ## 2. Local development
 
