@@ -1,7 +1,7 @@
 # BTC Dealer Positioning — A Rigorous Statistical Test
 
+[![tests](https://github.com/ItamarBenEzra78/btc-dealer-positioning/actions/workflows/tests.yml/badge.svg)](https://github.com/ItamarBenEzra78/btc-dealer-positioning/actions/workflows/tests.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
-![Tests: pytest](https://img.shields.io/badge/tests-pytest-informational.svg)
 ![Status: research](https://img.shields.io/badge/status-research-lightgrey.svg)
 
 *A case study in doing analytics honestly: take a popular market thesis, rebuild
@@ -36,16 +36,17 @@ exactly where they hold and where they don't — including the negative results.
 
 ## Dashboard preview
 
-The Streamlit app (`dashboard.py`) unifies four views. Screenshots below are
-placeholders — see [`docs/screenshots/README.md`](docs/screenshots/README.md)
-for the exact shot list to capture.
+The Streamlit app (`dashboard.py`) unifies four views. Screenshots below were
+captured from the app running locally against live Deribit data
+(2026-09-06); see [`docs/screenshots/README.md`](docs/screenshots/README.md)
+to reproduce them.
 
 | View | What it shows |
 |---|---|
 | ![Positioning](docs/screenshots/01-positioning.png) | **Positioning** — live spot, Net GEX, Zero-Gamma level, Call/Put walls, Max Pain, A/P/N zones, price chart overlaid with dealer levels, live pin-condition check. |
 | ![Flow & Threshold](docs/screenshots/02-flow.png) | **Flow & Threshold** — net options premium flow (Deribit taker trades), Kyle λ / Amihud impact, CUSUM events, and the significant-threshold model (`P(|move|≥2%)`, calm day vs. high-flow day). |
 | ![Statistical Evidence](docs/screenshots/03-evidence.png) | **Statistical Evidence** — the thesis tested on 2 years of BTC: vol-clustering two-sample tests, return persistence, event study of DVOL spikes, Markov high-vol regime probability, and the purged walk-forward verdict. |
-| ![Validation](docs/screenshots/04-validation.png) | **Validation** — the engine's outputs compared side-by-side to the CryptoGamma oracle for structural levels; sign divergences (from the naive dealer-sign convention) are flagged rather than hidden. |
+| *(no screenshot — the public CryptoGamma endpoint returned HTTP 401 at capture time; the tab shows "Oracle unavailable" and degrades gracefully)* | **Validation** — the engine's outputs compared side-by-side to the CryptoGamma oracle for structural levels; sign divergences (from the naive dealer-sign convention) are flagged rather than hidden. |
 
 **Recommended 15-second GIF:** open the app, land on **Positioning**, change
 the timeframe radio from `1D` to `1M`, switch tab to **Statistical Evidence**,
@@ -340,6 +341,11 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for three deployment paths:
 - **Overlapping forward windows** make in-sample p-values optimistic; the
   purged walk-forward CV addresses this specifically for the skill check
   and is the number to trust for anything predictive.
+- **Oracle availability.** The CryptoGamma public snapshot endpoint used by
+  `validate.py` returned HTTP 401 on 2026-09-06; the validation row in the
+  findings table reflects the original run on 2026-07-13. When the endpoint
+  is unreachable the Validation tab reports "Oracle unavailable" rather than
+  failing.
 - **Not financial advice.** A research instrument that reports what the data
   says — including when the data says *no signal*.
 

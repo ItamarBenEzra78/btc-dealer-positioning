@@ -11,9 +11,5 @@ data/app.db
 .env.*
 !.env.example
 
-# screenshots for the README — capture locally, add explicitly when ready
-docs/screenshots/*.png
-docs/screenshots/*.gif
-docs/screenshots/*.jpg
+# raw screen recordings are not committed; PNG screenshots in docs/screenshots are
 docs/screenshots/*.mp4
-!docs/screenshots/README.md
