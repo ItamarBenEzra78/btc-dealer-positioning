@@ -32,7 +32,7 @@ sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
 
 echo ">> [5/8] R packages"
-Rscript -e 'install.packages(c("MSwM","changepoint"), repos="https://cloud.r-project.org")' || \
+Rscript -e 'install.packages("MSwM", repos="https://cloud.r-project.org")' || \
   echo "   (R packages optional — stats still run without them)"
 
 echo ">> [6/8] build initial data + database"

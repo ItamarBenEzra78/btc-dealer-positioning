@@ -1,15 +1,22 @@
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
 .DS_Store
+
+# runtime artefacts
 data/*.log
+data/app.db
+data/snapshots/
+data/dataset.csv
+data/analysis_output.csv
 .streamlit/credentials.toml
 .streamlit/secrets.toml
-data/app.db
 
-# local environment overrides (see .env.example for the template)
+# local environment overrides
 .env
 .env.*
-!.env.example
 
 # raw screen recordings are not committed; PNG screenshots in docs/screenshots are
 docs/screenshots/*.mp4

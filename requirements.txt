@@ -1,16 +1,18 @@
-numpy
-pandas
-scipy
-scikit-learn
-plotly
-streamlit
-fastapi
-uvicorn[standard]
-sqlalchemy
-apscheduler
-httpx
-tenacity
-arch
-pytest
-# for Postgres (optional): psycopg[binary]
-# R side (separate): install.packages(c("MSwM","changepoint"))
+# Analysis core (import-tested on Python 3.9.6 via `pip freeze`)
+numpy==2.0.2
+pandas==2.3.3
+scipy==1.13.1
+scikit-learn==1.6.1
+arch==7.2.0
+
+# Dashboard / API / worker (pinned to known-good releases)
+plotly==5.24.1
+streamlit==1.50.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+apscheduler==3.11.0
+
+# Optional extras (not installed by default):
+#   Postgres backend:  pip install "psycopg[binary]"   then set DATABASE_URL
+#   R side (separate): Rscript -e 'install.packages("MSwM")'
