@@ -1,357 +1,120 @@
-# BTC Dealer Positioning — A Rigorous Statistical Test
+# BTC Dealer Positioning — A Statistical Test
+
+Rebuild the "dealer gamma" positioning metrics from raw Deribit data, then test whether they predict BTC price behaviour — reporting the nulls alongside the hits.
 
 [![tests](https://github.com/ItamarBenEzra78/btc-dealer-positioning/actions/workflows/tests.yml/badge.svg)](https://github.com/ItamarBenEzra78/btc-dealer-positioning/actions/workflows/tests.yml)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)
+![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status: research](https://img.shields.io/badge/status-research-lightgrey.svg)
-
-*A case study in doing analytics honestly: take a popular market thesis, rebuild
-its metrics from raw data, test them under leakage-safe conditions, and report
-exactly where they hold and where they don't — including the negative results.*
 
 ## Executive summary
 
-- **Dataset:** 2 years of BTC options and spot data pulled from the free Deribit
-  public API — **731 daily bars** (2024-07-13 → 2026-07-13) plus the full live
-  option chain used to reconstruct dealer positioning.
-- **Question:** Do the popular *dealer-positioning* signals — Gamma Exposure,
-  gamma regimes, and options flow — actually predict BTC price behaviour, or
-  only look convincing on a chart?
-- **Method:** Rebuild every headline metric from scratch, then subject each
-  claim to a specific statistical test: event studies, two-sample regime tests,
-  Markov regime-switching (R), and a **purged/embargoed walk-forward**
-  cross-validation that prevents future data from leaking into the model.
-- **Main result:** The **magnitude** of price moves is statistically
-  predictable (elevated-vol regimes have measurably higher forward realized
-  vol, Welch p < 0.001). The **direction** of price moves is *not* — under
-  leakage-safe validation, the model's Brier score (0.187) barely beats the
-  base rate (0.192). The tool reports both, plainly.
+- **Dataset.** 731 daily BTC-PERPETUAL bars from Deribit's free API (2024-07-13 → 2026-07-13), the DVOL implied-volatility index, and the live option chain (open interest + mark IV per strike). The analysis sample is frozen as `data/sample_2024-07_2026-07.csv`. DVOL is available for 500 of the 731 days; after the 19-day warm-up of the trailing median, **regime tests cover 481 days (2025-03-20 onward), not 731.**
+- **Question.** A popular retail options-positioning thesis holds that dealer hedging shapes the tape: positive-gamma regimes are calm and mean-reverting, negative-gamma regimes trend, and large flow precedes large moves. Using the implied-vol regime as an observable proxy, which of those claims survive a specific statistical test?
+- **Method.** Every headline metric (GEX, walls, zero-gamma, max pain) is recomputed from the raw chain with Black-Scholes gamma. Each claim becomes a test: Welch / Mann-Whitney / Levene two-sample tests, a permutation test, lag-1 autocorrelation on contiguous same-regime pairs, an event study with a 60-day pre-event benchmark, GARCH(1,1), a two-state Markov-switching model in R, and an expanding-window walk-forward validation with a horizon-length gap before each test block.
+- **Main result.** The **magnitude** of moves is predictable: forward 3-day realized vol is 45.3% in elevated-vol regimes vs 27.5% in calm ones (Welch p < 0.0001). **Direction is not**: an uncalibrated logistic regression on regime features scores a walk-forward Brier of 0.1869 vs 0.1915 for the base rate (edge +0.005, within noise). **Explicit null:** an earlier version reported "calm tapes mean-revert" (autocorr −0.091, p = 0.03); after correcting regime labelling for missing DVOL (days without DVOL had been labelled *calm*) the effect is **not significant** (−0.034, p = 0.55).
 
-> **Jargon translated on first use:** *Gamma Exposure (GEX)* — an estimate of
-> how the aggregate options-book positioning of dealers may pressure them to
-> hedge in the underlying market. *Max Pain* — the strike at which the most
-> option contracts would expire worthless. *Purged walk-forward CV* — a
-> time-series validation technique that removes any training observation whose
-> forward-return window overlaps with a test observation, so tomorrow's answer
-> cannot leak into today's training set.
+## Dashboard
 
-## Dashboard preview
-
-The Streamlit app (`dashboard.py`) unifies four views. Screenshots below were
-captured from the app running locally against live Deribit data
-(2026-09-06); see [`docs/screenshots/README.md`](docs/screenshots/README.md)
-to reproduce them.
+Screenshots from the Streamlit app running locally against live Deribit data (2026-09-06).
 
 | View | What it shows |
 |---|---|
-| ![Positioning](docs/screenshots/01-positioning.png) | **Positioning** — live spot, Net GEX, Zero-Gamma level, Call/Put walls, Max Pain, A/P/N zones, price chart overlaid with dealer levels, live pin-condition check. |
-| ![Flow & Threshold](docs/screenshots/02-flow.png) | **Flow & Threshold** — net options premium flow (Deribit taker trades), Kyle λ / Amihud impact, CUSUM events, and the significant-threshold model (`P(|move|≥2%)`, calm day vs. high-flow day). |
-| ![Statistical Evidence](docs/screenshots/03-evidence.png) | **Statistical Evidence** — the thesis tested on 2 years of BTC: vol-clustering two-sample tests, return persistence, event study of DVOL spikes, Markov high-vol regime probability, and the purged walk-forward verdict. |
-| *(no screenshot — the public CryptoGamma endpoint returned HTTP 401 at capture time; the tab shows "Oracle unavailable" and degrades gracefully)* | **Validation** — the engine's outputs compared side-by-side to the CryptoGamma oracle for structural levels; sign divergences (from the naive dealer-sign convention) are flagged rather than hidden. |
+| ![Positioning](docs/screenshots/01-positioning.png) | **Positioning** — spot, Net GEX, zero-gamma, call/put walls, max pain, A/P/N zones, price chart with dealer levels, live pin-condition check. Falls back to the last stored snapshot if Deribit is unreachable. |
+| ![Flow & Threshold](docs/screenshots/02-flow.png) | **Flow & Threshold** — net options premium flow, Kyle λ, volume–volatility regression, CUSUM events, and the in-sample significant-threshold model `P(|move| ≥ 2%)`. |
+| ![Statistical Evidence](docs/screenshots/03-evidence.png) | **Statistical Evidence** — regime two-sample tests, persistence, DVOL-spike event study, Markov regime probability, and the walk-forward verdict (gap vs no gap). |
 
-**Recommended 15-second GIF:** open the app, land on **Positioning**, change
-the timeframe radio from `1D` to `1M`, switch tab to **Statistical Evidence**,
-scroll to the purged walk-forward verdict block. Capture with ScreenToGif
-(Windows) or Kap (macOS); save as `docs/screenshots/00-tour.gif`.
+The Validation tab compares the engine to the CryptoGamma oracle; that endpoint has returned HTTP 401 since 2026-09, so the tab shows "Oracle unavailable" (see Limitations).
+
+## Findings
+
+Every number is printed by `python3 stats_spine.py`, `python3 flow_engine.py` or `Rscript inference.R` on the frozen sample, and asserted by `tests/test_engines.py`.
+
+| Question | Method | Result | Verdict |
+|---|---|---|---|
+| Do elevated-vol regimes have higher forward realized vol? | Welch's t, Mann-Whitney U, Levene, permutation (n 169 / 309) | **45.3%** vs **27.5%**; all p < 0.0001 | **Supported** — vol clustering is strong. |
+| Is volatility clustering persistent? | GARCH(1,1), `arch` | α = 0.107, β = 0.845, persistence **0.952** | **Supported.** |
+| Do two volatility regimes exist? | Markov switching, R `MSwM` | low-vol +0.13%/day (sd 1.55%, stay 0.94); high-vol −0.28%/day (sd 3.59%, stay 0.87) | **Supported** — two sticky regimes. |
+| Does the regime carry a directional bias over 3 days? | Welch's t on `fwd_ret_3` | elevated **−0.61%** vs calm **+0.05%**, p = **0.081** | **Not significant.** |
+| Do calm tapes mean-revert, elevated tapes trend? | lag-1 autocorrelation, contiguous pairs | calm **−0.034** (p = 0.55, 298 pairs); elevated **+0.023** (p = 0.77, 156 pairs) | **Null** — the previously reported calm-regime effect was a labelling bug. |
+| Do DVOL spikes coincide with drawdowns? | event study, 24 events, 60-day pre-event benchmark | CAR(−3 … +5) = **−5.3%**; the drop is concentrated on days −3 … 0 (t ≈ −2.0 to −2.1) | **Descriptive** — spikes follow losses; windows overlap, so t-stats are optimistic. |
+| Does high volume raise the odds of a large move? | in-sample logistic on volume z-scores | P(\|move\| ≥ 2% next day): **0.315** on a calm day → **0.390** at z = +3 (base 0.316) | **Supported in-sample** — magnitude, not direction. |
+| Does signed flow predict tomorrow's return? | predictive Kyle λ (OLS) | p = **0.76**, R² = 0.000 | **Null.** |
+| Does the regime predict direction out of sample? | expanding-window walk-forward, 5 folds, OOS n = 395, uncalibrated `LogisticRegression` | gap = 3: Brier **0.1869** vs base **0.1915** (edge +0.0046); gap = 0: Brier **0.1927** (edge −0.0012) | **Null** — negligible either way; the gap did not change the verdict. |
+| Do reconstructed levels match an external oracle? | side-by-side vs CryptoGamma, logged 2026-07-13 | call wall $65,000 on both sides; spot and max pain within tolerance | **Matched then** — not reproducible since the endpoint went 401. |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph SRC["External data (free, no key)"]
-        D[Deribit REST<br/>options + OHLC + DVOL]
-        FF[Forex Factory<br/>macro calendar]
-        CG[CryptoGamma<br/>validation oracle]
-    end
-
-    subgraph L0["L0 · Data layer"]
-        DL[data_layer.py<br/>ingestion]
-        DB[(SQLite / Postgres<br/>via SQLAlchemy)]
-        WK[worker.py<br/>APScheduler]
-    end
-
-    subgraph L1["L1 · Engines"]
-        GX[gex_engine.py<br/>Black-Scholes gamma]
-        PS[positioning.py<br/>walls · max pain · zones]
-        FL[flow_engine.py<br/>Kyle λ · Amihud · CUSUM]
-        AN[anomalies.py<br/>regime · pin]
-    end
-
-    subgraph L2["L2 · Statistics"]
-        SS[stats_spine.py<br/>event study · purged CV]
-        PH[phenomenon.py<br/>reusable analyzer]
-        RI[inference.R<br/>Markov MSwM]
-    end
-
-    subgraph L3["L3 · Interfaces"]
-        API[api.py<br/>FastAPI + Pydantic]
-        DASH[dashboard.py<br/>Streamlit + Plotly]
-    end
-
-    D --> DL --> DB
-    D --> GX --> PS --> AN
-    D --> FL
-    FF --> AN
-    WK --> DL
-    DB --> SS
-    SS --> PH
-    DB --> RI
-    PS --> SS
-    FL --> SS
-    CG -.validates.-> PS
-    SS --> API
+    D[Deribit REST<br/>options · OHLC · DVOL] --> DL[data_layer.py]
+    DL --> CSV[(data/market_daily.csv)]
+    DL --> DB[(SQLite / Postgres<br/>db.py)]
+    DL --> SNAP[(data/snapshots/*.jsonl)]
+    WK[worker.py<br/>APScheduler] --> DL
+    D --> PS[positioning.py<br/>gex_engine.py]
+    D --> FLV[flow_engine.live_option_flow]
+    CSV --> SS[stats_spine.py]
+    CSV --> PH[phenomenon.py]
+    CSV --> FL[flow_engine.py<br/>backtestable part]
+    CSV --> RI[inference.R<br/>MSwM]
+    RI --> RO[(data/r_regime.csv<br/>r_regime_summary.json)]
+    DB --> API[api.py<br/>FastAPI]
     PS --> API
-    FL --> API
-    SS --> DASH
+    SS --> DASH[dashboard.py<br/>Streamlit]
+    RO --> DASH
     PS --> DASH
-    FL --> DASH
-    RI --> DASH
+    FLV --> DASH
+    SNAP -. fallback .-> DASH
+    CG[CryptoGamma oracle] -. validate.py .-> DASH
 ```
 
-Python for pipelines and engines; R for the one inference task where its
-libraries lead (Markov regime-switching). Every statistic rides on
-peer-reviewed libraries (`scipy`, `scikit-learn`, `arch`, R's `MSwM`) — only
-the domain engines are hand-written.
+The committed CSV feeds the statistics (`stats_spine.py`, `phenomenon.py`, `inference.R`); the database feeds the API and is filled by the worker. The dashboard reads the CSV and the R outputs directly and only touches the live engines for the Positioning and Flow tabs.
 
-## What this project demonstrates
+## What this demonstrates
 
-**Directly built in this repository:**
+- **Hand-rolled statistics, where the library would hide the point:** the walk-forward split generator and gap logic, the permutation test, the event study (abnormal returns vs a pre-event window), the contiguous-pair autocorrelation, the two-proportion z-test in `phenomenon.py`, Black-Scholes gamma, max pain and the zero-gamma search.
+- **Library statistics, used as intended:** `scipy.stats` (Welch, Mann-Whitney, Levene, OLS), `scikit-learn` (`LogisticRegression`, `StandardScaler`, `CalibratedClassifierCV`, `brier_score_loss`, `calibration_curve`), `arch` (GARCH), R `MSwM` (Markov switching).
+- **Leak-aware validation:** the gap is derived from the target's horizon and a mismatch raises; the test suite proves `max(train) + horizon < min(test)` for every fold and shows, with a memorising model on synthetic data, that the gap removes the fake skill produced by overlapping labels.
+- **Reporting discipline:** the correction of the regime-label bug is recorded in the findings table rather than silently absorbed; the gap/no-gap Brier pair is printed so the "purging" claim is an artefact, not a slogan.
+- **Plumbing:** SQLAlchemy 2.0 repository, APScheduler collector, FastAPI with Pydantic contracts, Streamlit dashboard with offline fallbacks, systemd units, CI with lint + tests on Python 3.9–3.12.
 
-- **End-to-end data ingestion** — free public APIs (Deribit REST, Forex
-  Factory JSON), OHLC/DVOL history, live option-chain reconstruction, and a
-  background worker that accumulates a forward snapshot database.
-- **Storage & SQL** — SQLAlchemy 2.0 ORM (Declarative) behind a repository
-  interface; SQLite for local development, Postgres via one env var, with no
-  code changes elsewhere.
-- **Statistical hypothesis testing** — Welch's t, Mann–Whitney U, Levene's
-  test for variance equality, permutation tests, event studies with
-  mean-adjusted cumulative abnormal returns.
-- **Leakage prevention** — purged, embargoed walk-forward cross-validation
-  that drops any training observation whose forward window overlaps the test
-  set; scaler fitted on training folds only.
-- **Probability calibration** — `CalibratedClassifierCV` (sigmoid/isotonic
-  around `LogisticRegression`), Brier score against a base-rate benchmark,
-  reliability curves.
-- **Time-series analysis** — rolling realized volatility, regime labelling
-  from implied vol, GARCH(1,1) persistence check.
-- **R integration** — Markov regime-switching (`MSwM`) fitted on percent
-  log-returns, smoothed regime probabilities exported for the dashboard.
-- **Dashboard / BI** — Streamlit + Plotly, four themed tabs, cached queries
-  with TTL, dark-mode design tokens.
-- **API layer** — FastAPI with typed Pydantic response models, TTL cache to
-  avoid rate-limiting Deribit, `asyncio.gather` for concurrent aggregation.
-- **Reproducibility** — deterministic `now` timestamps injected from the data
-  feed rather than the local clock; seeded RNG for permutation tests; a
-  single `run_all.py` pipeline runner.
-- **Testing** — `pytest` with 12 tests: pure-function unit tests for the
-  maths plus data-backed tests that run the statistical layer against the
-  committed 2-year sample.
-- **Operational readiness** — `deploy/setup.sh` bootstraps a fresh Ubuntu
-  VPS, plus three `systemd` units (`worker`, `api`, `dashboard`) with
-  auto-restart.
-- **Honest reporting of negative findings** — the directional edge is
-  reported as negligible (Brier 0.187 vs. base-rate 0.192) even though hiding
-  it would make the tool *look* more impressive.
-
-**Transferable analytical principles (analogies, not equivalences):**
-
-- **Leakage-safe validation** is a general concern in any time-ordered
-  problem — market data is not product-analytics data, but the *pattern*
-  of purging overlapping windows applies to churn, retention, and any
-  forward-looking classification task.
-- **Calibrated probabilities** matter wherever a `predict_proba` output must
-  actually mean what it says — risk scoring, ranking, and A/B-test power
-  analysis all depend on it.
-- **Statistical significance ≠ predictive utility** — a large sample can
-  make a `p < 0.01` easy to reach while the actual Brier improvement is
-  0.005. Learning to distinguish the two is a habit that generalises.
-
-## Key findings
-
-All numbers below come from the code paths in `stats_spine.py` (Python) and
-`inference.R` (R), executed on the committed 2-year sample.
-
-| Question | Method | Result | Interpretation |
-|---|---|---|---|
-| Do elevated-vol regimes have different forward realized vol from calm regimes? | Welch's t + Levene | elevated **45%** vs. calm **35%**, Welch p < **0.001** | ✅ **Works** — vol clustering is real and strongly significant. |
-| Do calm (positive-gamma proxy) tapes mean-revert? | lag-1 autocorrelation | calm autocorr = **−0.091**, p = **0.03** | ✅ **Works, weakly** — statistically significant but small in magnitude. |
-| Do vol spikes cluster with drawdowns? | event study (CAR, ±3/±5 days) | CAR ≈ **−6.5%** around spike events | ✅ **Works** — consistent with the leverage effect. |
-| Do two distinct volatility regimes exist? | Markov regime-switching (R `MSwM`) | low-vol +0.13%/day, stickiness 0.94; high-vol −0.28%/day | ✅ **Works** — two regimes fit the data. |
-| Does high options flow raise the odds of a large price move? | Amihud + logistic | P(\|move\| ≥ 2% next day): 0.32 on a calm day → **0.39** on a high-flow day | ✅ **Works** — but for **magnitude**, not direction. |
-| Does options flow predict the *direction* of the next move? | predictive Kyle λ + purged walk-forward CV | Kyle p = **0.76**; Brier 0.187 vs. base-rate 0.192 (edge +0.005) | ➖ **Does not work** — the directional edge is within noise under leakage-safe validation. |
-| Do the reconstructed levels match a paid oracle? | side-by-side vs. CryptoGamma | Call Wall $65k = $65k; spot and Max Pain agree within tolerance | ✅ **Validated** — structural levels reconstruct correctly. |
-
-The important row is the second-to-last: **the tool reports the negative
-directional finding rather than burying it.** That is the entire point.
-
-## Methodology in 90 seconds
-
-The one-page technical explainer lives at
-[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). It covers the hypothesis, why
-naive backtesting overstates skill on options data, exactly what the purged
-walk-forward is purging, which statistical tests are used and why, and the
-limitations that shape the honest verdict.
-
-## Technical stack
-
-| Layer | Tools |
-|---|---|
-| **Data** | Deribit public REST (options + OHLC + DVOL), Forex Factory JSON, CryptoGamma oracle — all free, no API keys |
-| **Analytics / Statistics** | `numpy`, `pandas`, `scipy`, `scikit-learn` (LogisticRegression, CalibratedClassifierCV, TimeSeriesSplit, StandardScaler, brier_score_loss, calibration_curve), `arch` (GARCH), R `MSwM` (Markov switching) |
-| **Storage / SQL** | `SQLAlchemy` 2.0 (Declarative ORM), SQLite (default), Postgres (via `DATABASE_URL` env var — same code path) |
-| **Visualization** | `plotly`, `streamlit` with themed dark UI |
-| **Application** | `fastapi`, `pydantic`, `uvicorn`, `apscheduler` (background worker), `httpx` + `tenacity` (async + retry) |
-| **Testing / Infrastructure** | `pytest`, `systemd` units, one-shot Ubuntu bootstrap script |
-
-## Project structure
-
-```
-btc-dealer-positioning/
-├── gex_engine.py         # Black-Scholes gamma; core GEX maths
-├── positioning.py        # Full snapshot: max pain, walls, A/P/N zones, zero-gamma
-├── flow_engine.py        # Kyle λ, Amihud, CUSUM, significant-threshold logistic
-├── anomalies.py          # Vol-regime labels + max-pain pin conditions
-├── calendar_layer.py     # Macro calendar catalyst context (Forex Factory)
-├── stats_spine.py        # Event study · two-sample tests · purged walk-forward CV
-├── phenomenon.py         # Reusable "run the full battery on any event mask"
-├── inference.R           # Markov regime-switching (MSwM); optional rugarch GARCH
-├── data_layer.py         # Deribit fetch + snapshot logging
-├── db.py                 # SQLAlchemy ORM — SQLite default, Postgres optional
-├── worker.py             # Background scheduler — captures snapshot every 30 min
-├── validate.py           # Cross-check reconstructed levels vs. CryptoGamma oracle
-├── api.py                # FastAPI backend with Pydantic contracts
-├── dashboard.py          # Streamlit dashboard (4 tabs)
-├── run_all.py            # End-to-end pipeline runner
-├── net.py                # Async httpx + tenacity retry helper
-├── tests/                # pytest — 12 tests, pure + data-backed
-├── deploy/               # systemd units + one-shot Ubuntu setup script
-├── data/                 # Committed 2y sample + generated snapshots/regime CSVs
-└── docs/
-    ├── METHODOLOGY.md    # 1-page technical explainer
-    ├── DEPLOYMENT.md     # Streamlit Cloud + local + VPS
-    └── screenshots/      # Dashboard screenshots (to be captured locally)
-```
-
-## Run locally
-
-**Requirements:** Python 3.10+; R 4.x is *optional* (a pre-computed
-`data/r_regime.csv` is committed, so the dashboard works without R).
-
-### Quickest preview — dashboard only, from committed sample data
+## Reproduce
 
 ```bash
-git clone https://github.com/ItamarBenEzra78/btc-dealer-positioning.git
-cd btc-dealer-positioning
-pip install -r requirements.txt
-streamlit run dashboard.py
+pip install -r requirements-dev.txt
+python3 stats_spine.py        # every number in the Findings table (Python side)
+python3 flow_engine.py        # Kyle λ, Amihud, volume–volatility OLS, CUSUM, threshold model
+python3 phenomenon.py         # the reusable battery on three example event masks
+Rscript inference.R           # Markov switching -> data/r_regime.csv + r_regime_summary.json (needs MSwM)
+streamlit run dashboard.py    # dashboard (works offline from committed data)
 ```
 
-The dashboard fetches live positioning from the free Deribit API on start.
-The **Statistical Evidence** tab reads the committed 2-year sample; the
-**Validation** tab reaches out to the free CryptoGamma endpoint.
+`python3 run_all.py` runs the full pipeline, including live fetches. It **overwrites** `data/market_daily.csv`, `data/r_regime.csv`, `data/r_regime_summary.json`, appends to `data/snapshots/snapshots.jsonl` (git-ignored) and writes `data/app.db`. It does **not** touch `data/sample_2024-07_2026-07.csv`, which is what the tests and the documented numbers use. The dashboard reads `market_daily.csv`, so its figures move with a refresh; the documented ones do not.
 
-### Full pipeline — rebuild everything from scratch
+Only `numpy`, `pandas`, `scipy`, `scikit-learn` and `arch` are needed for the statistics; Streamlit, FastAPI, SQLAlchemy and APScheduler are for the app layer. Postgres is an optional extra (`pip install "psycopg[binary]"`, set `DATABASE_URL`).
+
+## Tests
 
 ```bash
-# (optional) R side, for the Markov regime-switching output
-Rscript -e 'install.packages(c("MSwM", "changepoint"))'
-
-# end-to-end: builds history, logs a snapshot, runs flow model, stats, R inference,
-# and validation — one command, ordered
-python3 run_all.py
-
-# then launch
-streamlit run dashboard.py
+python3 -m pytest -q     # 35 tests
+ruff check .
 ```
 
-`run_all.py` is idempotent: rerunning it refreshes the sample without wiping
-anything else.
+Pure-function tests cover the maths (gamma, max pain, zero-gamma with a closed-form answer, forward returns, regime labelling with missing DVOL, CUSUM, instrument parsing, a synthetic event study). Walk-forward tests prove no train/test overlap for n ∈ {100, 477, 731} × horizon ∈ {1, 3, 7}, that a horizon mismatch raises, and the leak canary above. Data-backed tests assert the Findings numbers on the frozen sample. An offline Streamlit `AppTest` renders the dashboard with every network call failing.
 
-### Individual components
+## Limitations
 
-```bash
-python3 data_layer.py     # (re)build 2y market history + log one snapshot
-python3 flow_engine.py    # print flow features and significant-threshold model
-python3 stats_spine.py    # print the full statistical evaluation
-Rscript inference.R       # regenerate data/r_regime.csv (optional)
-python3 validate.py       # compare reconstructed levels to CryptoGamma
-uvicorn api:app --reload  # start the FastAPI backend at :8000 (docs at /docs)
-```
+- **DVOL coverage.** The regime label exists for 481 of 731 days. All regime-conditioned results are statements about 2025-03-20 → 2026-07-13.
+- **DVOL is a proxy** for the dealer-gamma regime. The GEX-conditioned test needs the snapshot history the worker is accumulating; it does not exist yet.
+- **Overlapping event windows.** 24 DVOL spikes in 481 days means several ±3/+5-day windows overlap, so event-study t-statistics are optimistic.
+- **Overlapping forward windows** make the in-sample p-values optimistic in general; the walk-forward Brier is the number to trust for anything predictive.
+- **The threshold model is in-sample.** `P(|move| ≥ 2%)` comes from a logistic fit on the whole sample; it describes the sample, it is not a validated forecast.
+- **Headline Brier is uncalibrated.** The walk-forward uses a plain scaled `LogisticRegression`; the sigmoid-calibrated single-split estimate (`[5]` in `stats_spine.py`) is a diagnostic, not the headline.
+- **Oracle offline.** The CryptoGamma public endpoint has returned HTTP 401 since 2026-09; the validation row records a comparison logged on 2026-07-13 and cannot currently be re-run.
+- **Naive dealer sign** (long calls / short puts). The net-gamma sign can disagree with other vendors while the levels agree.
+- Not financial advice.
 
-### Tests
+## License
 
-```bash
-python3 -m pytest -q
-```
-
-**No API keys or secrets are required.** All data sources are free. See
-[`.env.example`](.env.example) for the two optional environment variables
-(`DATABASE_URL`, `SNAPSHOT_INTERVAL_MIN`).
-
-## Deployment
-
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for three deployment paths:
-
-1. **Streamlit Community Cloud** (recruiter-friendly read-only demo).
-2. **Local development** (as above).
-3. **Ubuntu VPS with the collector worker** — the full production setup with
-   `systemd`, documented in the existing [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
-
-## What I learned
-
-- **Purged walk-forward CV changes the verdict.** A naive train/test split on
-  overlapping forward-return windows made the directional model look far
-  better than it is; embargoing the horizon between train and test brought
-  the Brier improvement from "seems useful" down to +0.005 — within noise.
-  Reporting the leakage-safe number is the single most important discipline
-  in the project.
-- **Statistical significance is not predictive skill.** The vol-clustering
-  result has `p < 0.001` and the direction result has `p = 0.76`; the
-  same 2-year dataset supports one and rejects the other, and both are
-  correct outputs.
-- **Calibration is a separate axis from accuracy.** Even after the direction
-  model fails on skill, its predicted probabilities can still be checked
-  against observed frequencies with a reliability curve — a habit that
-  matters everywhere `predict_proba` is exposed to users.
-- **Validate derived metrics against an external oracle before trusting them.**
-  Reconstructing walls, Max Pain, and Zero-Gamma from raw option data is
-  error-prone; cross-checking against the free CryptoGamma feed caught the
-  net-gamma sign divergence early (a real dealer-sign modelling choice, not
-  a bug).
-- **Reporting the null is the most useful thing an analyst can do.** The
-  directional negative result is *more* informative than any positive result
-  the tool could produce, because it prevents an entire class of misuse
-  downstream.
-- **Analytical tooling only accumulates value if you also build the plumbing.**
-  Free historical GEX doesn't exist; without the `worker.py` + `db.py`
-  layer running unattended on a VPS, the "GEX-native backtest" I want to run
-  in six months has no dataset to run against.
-
-## Honest limitations
-
-- **Dealer sign** uses the naive convention (long calls / short puts) — this
-  is exactly why the net-gamma *sign* diverges from CryptoGamma while the
-  *levels* match. Flagged, not hidden. Roadmap: a taker-flow sign model.
-- **DVOL is a proxy for the gamma regime**, not the regime itself. Regime
-  tests use implied vol as an observable stand-in; the true GEX-conditioned
-  test needs the forward snapshot history that the collector is currently
-  building.
-- **GARCH in R was optional** — `rugarch` did not install cleanly on R 4.6
-  during development; the Python `arch` library provides the same result,
-  and the Levene test independently confirms volatility clustering (p ≈ 0.009).
-- **Overlapping forward windows** make in-sample p-values optimistic; the
-  purged walk-forward CV addresses this specifically for the skill check
-  and is the number to trust for anything predictive.
-- **Oracle availability.** The CryptoGamma public snapshot endpoint used by
-  `validate.py` returned HTTP 401 on 2026-09-06; the validation row in the
-  findings table reflects the original run on 2026-07-13. When the endpoint
-  is unreachable the Validation tab reports "Oracle unavailable" rather than
-  failing.
-- **Not financial advice.** A research instrument that reports what the data
-  says — including when the data says *no signal*.
-
-## Roadmap
-
-- [ ] Forward GEX snapshot DB → GEX-native backtests (zero-gamma break, pin rate)
-- [ ] Taker-flow dealer-sign model (resolve the sign divergence)
-- [ ] Macro layer (BTC-SPX regime correlation) with R `estudy2`
-- [ ] Higher-order flows (Vanna / Charm exposure)
+MIT — see [`LICENSE`](LICENSE). Further reading: [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md), [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).

@@ -3,9 +3,17 @@ run_all.py — Run the whole pipeline end to end, in order.
 
     python3 run_all.py
 
-Builds history, logs a snapshot, runs the flow model, the statistical evaluation,
-the R inference, and the oracle validation. Then tells you to launch the dashboard.
-(The dashboard itself is interactive: `streamlit run dashboard.py`.)
+Fetches fresh history from Deribit, logs a snapshot, runs the flow model, the
+statistical evaluation, the R inference, and the oracle validation.
+
+Files this OVERWRITES:  data/market_daily.csv, data/r_regime.csv,
+                        data/r_regime_summary.json, data/app.db
+Files this APPENDS to:  data/snapshots/snapshots.jsonl (git-ignored)
+Never touched:          data/sample_2024-07_2026-07.csv — the frozen sample
+                        the tests and the documented numbers are tied to.
+
+The dashboard reads market_daily.csv, so its figures move after a refresh;
+the README figures do not. (`streamlit run dashboard.py` to launch it.)
 """
 
 import subprocess
