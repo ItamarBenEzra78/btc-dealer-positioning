@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 import db
-from data_layer import save_snapshot, build_market_daily
+from data_layer import build_market_daily, save_snapshot
 
 print = functools.partial(print, flush=True)   # worker logs must appear live
 SNAPSHOT_MIN = int(os.getenv("SNAPSHOT_INTERVAL_MIN", "30"))

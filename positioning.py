@@ -1,8 +1,8 @@
 """
 positioning.py — Full dealer-positioning snapshot from Deribit (L1).
 
-Extends the base GEX engine with the two metrics the source article emphasised
-most, plus the group's A/P/N vocabulary:
+Extends the base GEX primitives with the two metrics the thesis emphasises
+most, plus the A/P/N zone vocabulary:
 
   Max Pain      per-expiry strike that minimises total option intrinsic value
                 (where the most options expire worthless — the "pin" magnet).
@@ -16,7 +16,7 @@ naive convention (long calls / short puts) — flagged, not hidden.
 
 import numpy as np
 
-from gex_engine import _get, parse_instrument, bs_gamma, DERIBIT
+from gex_engine import DERIBIT, _get, bs_gamma, parse_instrument
 
 
 def build_chain(currency="BTC", now_ts=None):
@@ -46,7 +46,7 @@ def build_chain(currency="BTC", now_ts=None):
 def max_pain(records, expiry=None):
     """Strike minimising total intrinsic value paid to holders (the pin level).
 
-    If `expiry` is given, restrict to that expiry (the article stresses per-expiry,
+    If `expiry` is given, restrict to that expiry (the thesis is stated per-expiry,
     usually the monthly). Otherwise aggregate the whole chain.
     """
     recs = [r for r in records if expiry is None or r["expiry"] == expiry]
@@ -84,7 +84,10 @@ def apn_zones(strikes, call, put, net):
     order_abs = np.argsort(total_abs)[::-1]
     order_pos = np.argsort(net)[::-1]
     order_neg = np.argsort(net)
-    pick = lambda order, i: (float(strikes[order[i]]) if i < len(order) else None)
+
+    def pick(order, i):
+        return float(strikes[order[i]]) if i < len(order) else None
+
     return {
         "A1": pick(order_abs, 0), "A2": pick(order_abs, 1),
         "P1": pick(order_pos, 0), "P2": pick(order_pos, 1),
@@ -158,7 +161,8 @@ if __name__ == "__main__":
     print(f"  Net GEX     {s['net_gex']/1e9:+.3f}B   regime: {s['regime']}")
     print(f"  Zero Gamma  ${s['zero_gamma']:,.0f}" if s['zero_gamma'] else "  Zero Gamma  n/a")
     print(f"  Call Wall   ${s['call_wall']:,.0f}      Put Wall   ${s['put_wall']:,.0f}")
-    print(f"  Max Pain    agg ${s['max_pain_agg']:,.0f}   near({s['near_expiry']}, {s['near_dte']}d) ${s['max_pain_near']:,.0f}")
+    print(f"  Max Pain    agg ${s['max_pain_agg']:,.0f}   "
+          f"near({s['near_expiry']}, {s['near_dte']}d) ${s['max_pain_near']:,.0f}")
     print(f"  A-zones     A1 ${z['A1']:,.0f}   A2 ${z['A2']:,.0f}")
     print(f"  P-zones     P1 ${z['P1']:,.0f}   P2 ${z['P2']:,.0f}")
     print(f"  N-zones     N1 ${z['N1']:,.0f}   N2 ${z['N2']:,.0f}")
