@@ -17,11 +17,11 @@ Run:  python3 db.py     # create tables + migrate existing CSV/JSONL in
 
 import json
 import os
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 import pandas as pd
-from sqlalchemy import String, Float, Integer, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
+from sqlalchemy import Float, Integer, String, create_engine, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/app.db")
 engine = create_engine(DATABASE_URL)
@@ -132,12 +132,14 @@ if __name__ == "__main__":
 
     n = 0
     try:
-        for line in open("data/snapshots.jsonl"):
-            if line.strip():
-                save_snapshot(json.loads(line)); n += 1
+        with open("data/snapshots/snapshots.jsonl") as f:
+            for line in f:
+                if line.strip():
+                    save_snapshot(json.loads(line))
+                    n += 1
         print(f"  migrated {n} snapshots")
     except FileNotFoundError:
-        print("  no snapshots.jsonl to migrate")
+        print("  no data/snapshots/snapshots.jsonl to migrate")
 
     print(f"  price_bars in DB: {len(get_price_bars())}")
     print(f"  snapshots in DB : {len(get_snapshots())}")

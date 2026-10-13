@@ -2,7 +2,7 @@
 calendar_layer.py — Macro event context for the pin model.
 
 Free economic calendar (Forex Factory JSON via faireconomy). We surface the next
-high-impact USD event and encode the friend's insight:
+high-impact USD event and encode a catalyst overlay:
 
   A max-pain PIN is a low-volatility phenomenon. A scheduled high-impact event
   (CPI, FOMC, NFP) injects implied vol / uncertainty. So if we're pinned AND a
@@ -58,7 +58,7 @@ def next_event(now=None, **kw):
 
 
 def catalyst_read(pin_likely, ev, window_h=36):
-    """Turn 'pin state + next event' into the friend's directional-break read."""
+    """Turn 'pin state + next event' into a directional-break read."""
     if ev is None:
         return {"has_catalyst": False, "message": "No high-impact USD event on the horizon."}
     imminent = ev["hours_until"] <= window_h

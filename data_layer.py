@@ -4,26 +4,30 @@ data_layer.py — Historical + forward data for the statistical evaluation.
 Three jobs:
   1. fetch_price()   BTC daily OHLC (deep, free) -> returns + realized vol
   2. fetch_dvol()    Deribit DVOL implied-vol index history -> vol regime
-  3. save_snapshot() append today's live positioning to data/snapshots.jsonl
-                     — this is what grows our historical GEX database going forward
-                     (deep historical GEX is not free, so we start collecting now).
+  3. save_snapshot() append today's live positioning to data/snapshots/snapshots.jsonl
+                     (git-ignored; a 5-row data/snapshots_sample.jsonl is committed
+                     as the dashboard's offline fallback). Deep historical GEX is
+                     not free, so the collector builds it going forward.
 
 Run:  python3 data_layer.py           # builds data/market_daily.csv + logs a snapshot
 """
 
 import json
+import logging
 import os
-import urllib.request
 from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 
-from gex_engine import _get, DERIBIT
+from gex_engine import DERIBIT, _get
 from positioning import snapshot
 
 DATA_DIR = "data"
-SNAP_FILE = f"{DATA_DIR}/snapshots.jsonl"
+SNAP_DIR = f"{DATA_DIR}/snapshots"
+SNAP_FILE = f"{SNAP_DIR}/snapshots.jsonl"          # runtime-mutated, git-ignored
+SNAP_SAMPLE = f"{DATA_DIR}/snapshots_sample.jsonl"  # committed 5-row fallback
+log = logging.getLogger(__name__)
 
 
 def fetch_price(days=730):
@@ -87,24 +91,40 @@ def build_market_daily(days=730):
 
 def save_snapshot(currency="BTC"):
     """Append today's live positioning snapshot — grows the historical GEX DB."""
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(SNAP_DIR, exist_ok=True)
     s = snapshot(currency)
     s["captured_at"] = datetime.fromtimestamp(s["asof"], tz=timezone.utc).isoformat()
     with open(SNAP_FILE, "a") as f:                 # keep jsonl as a durable backup
         f.write(json.dumps(s, default=str) + "\n")
     try:                                            # and persist to the database
         import db
-        db.init_db(); db.save_snapshot(s)
-    except Exception:
-        pass
+        db.init_db()
+        db.save_snapshot(s)
+    except Exception as e:                          # DB is optional; the jsonl already has the row
+        log.warning("snapshot saved to %s but not to the database: %s: %s", SNAP_FILE, type(e).__name__, e)
     return s
 
 
-def load_snapshots():
-    if not os.path.exists(SNAP_FILE):
+def load_snapshots(path=None):
+    """Snapshots as a DataFrame: the runtime file if it exists, else the committed sample."""
+    path = path or (SNAP_FILE if os.path.exists(SNAP_FILE) else SNAP_SAMPLE)
+    if not os.path.exists(path):
         return pd.DataFrame()
-    rows = [json.loads(l) for l in open(SNAP_FILE) if l.strip()]
+    with open(path) as f:
+        rows = [json.loads(line) for line in f if line.strip()]
     return pd.DataFrame(rows)
+
+
+def last_good_snapshot(currency="BTC"):
+    """Most recent stored snapshot dict (runtime file, else committed sample), or None."""
+    df = load_snapshots()
+    if df.empty:
+        return None
+    df = df[df["currency"] == currency]
+    if df.empty:
+        return None
+    row = df.iloc[-1].to_dict()
+    return {k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in row.items()}
 
 
 if __name__ == "__main__":

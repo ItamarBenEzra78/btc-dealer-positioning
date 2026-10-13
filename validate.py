@@ -3,14 +3,18 @@ validate.py — Sanity-check our engine against an independent oracle.
 
 CryptoGamma publishes a free BTC GEX snapshot (also computed from Deribit).
 We compare structural levels — the parts that should agree regardless of
-sign convention — and honestly surface where they diverge (net-gamma sign,
-which depends on the dealer-sign assumption we flagged).
+sign convention — and surface where they diverge (net-gamma sign, which
+depends on the flagged dealer-sign assumption).
+
+The endpoint has returned HTTP 401 since 2026-09; main() then reports
+"Oracle unreachable" and exits cleanly.
 
 Run:  python3 validate.py
 """
 
 import json
 import time
+import urllib.error
 import urllib.request
 
 from positioning import snapshot
@@ -40,9 +44,10 @@ def fetch_oracle(url=ORACLE, _depth=0, retries=3):
 
 
 def within(a, b, pct):
-    if a is None or b is None:
+    """True if a is within pct of b. False when either side is missing or b is zero."""
+    if a is None or b is None or b == 0:
         return False
-    return abs(a - b) / b <= pct
+    return abs(a - b) / abs(b) <= pct
 
 
 def main():
@@ -74,7 +79,7 @@ def main():
         bv = f"${b:,.0f}" if b else "—"
         print(f"  {name:<16}{av:>14}{bv:>14}   {ok}")
 
-    # sign of net gamma — the honest divergence
+    # sign of net gamma — the expected divergence
     our_sign = "positive" if ours["net_gex"] > 0 else "negative"
     orc_sign = "positive" if met.get("netGamma", 0) > 0 else "negative"
     sign_match = "✅" if our_sign == orc_sign else "⚠️ divergent (dealer-sign assumption)"
