@@ -1,26 +1,27 @@
 """
-flow_engine.py — Money flow + the significant-threshold model (L2, the core).
+flow_engine.py — Money flow + the significant-threshold model (L2).
 
-Two parts, split by data availability (same honesty as L1):
+Two parts, split by data availability:
 
   LIVE  options net-premium flow from Deribit taker trades
         (are takers paying up for calls or puts, buying or selling premium).
 
   BACKTESTABLE NOW  the "significant flow threshold" on 2y of daily data:
-    - kyle_lambda()   price impact per unit of directional volume (Kyle's λ / Amihud)
+    - kyle_lambda()   price impact per unit of directional volume (Kyle's λ),
+                      plus the Amihud illiquidity ratio and a volume–volatility
+                      regression
     - cusum_events()  CUSUM filter: when does CUMULATIVE flow cross a significant level
-                      (this is the literal "how much flow is enough to matter")
-    - evaluated with an event study + a logistic P(big move | flow anomaly).
+    - significant_threshold()  logistic P(big move | flow anomaly).
 
-This directly implements the user's emphasised question: what size of flow is
-statistically significant enough to move price?
+The question under test: what size of flow is statistically associated with a
+large price move?
 """
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-from gex_engine import _get, DERIBIT
+from gex_engine import DERIBIT, _get
 
 
 # ----------------------------------------------------------------------------
@@ -66,11 +67,19 @@ def add_flow_features(df):
 
 
 def kyle_lambda(df):
-    """Price impact of directional volume.
+    """Price impact of directional volume, plus two liquidity descriptors.
 
-    Contemporaneous λ shares the close price with the target, so its R² is partly
-    mechanical — reported but not trusted. The honest test is PREDICTIVE: does
-    today's signed flow move TOMORROW's return? That can't be circular.
+    kyle_contemp_r2   contemporaneous signed volume vs same-day return. Signed
+                      volume uses sign(close - open), which shares the close
+                      with the target, so this R² is partly mechanical and is
+                      reported for completeness only.
+    kyle_pred_*       predictive: today's signed flow vs TOMORROW's return.
+                      This is the directional test that cannot be circular.
+    amihud            Amihud (2002) illiquidity ratio: mean(|r_t| / dollar
+                      volume_t), scaled by 1e9. Dollar volume = volume * close
+                      (Deribit perpetual volume is quoted in BTC).
+    volvol_*          OLS of |r_t| on volume_t: the volume–volatility relation
+                      (Clark 1973 / Karpoff 1987). Not an Amihud estimate.
     """
     d = df.dropna(subset=["logret", "signed_vol"]).copy()
     scale = d["volume"].abs().mean()
@@ -83,14 +92,18 @@ def kyle_lambda(df):
     dp = d.dropna(subset=["fwd1"])
     pred = stats.linregress(dp["signed_vol"].values / scale, dp["fwd1"].values)
 
-    # Amihud illiquidity: |return| vs volume
-    d2 = df.dropna(subset=["logret", "volume"])
-    amihud = stats.linregress(d2["volume"].values, d2["logret"].abs().values)
+    d2 = df.dropna(subset=["logret", "volume", "close"])
+    d2 = d2[d2["volume"] > 0]
+    dollar_vol = d2["volume"].values * d2["close"].values
+    amihud = float(np.mean(np.abs(d2["logret"].values) / dollar_vol) * 1e9)
+    volvol = stats.linregress(d2["volume"].values, d2["logret"].abs().values)
     return {
         "kyle_contemp_r2": float(contemp.rvalue ** 2),           # inflated by construction
         "kyle_pred_lambda": float(pred.slope), "kyle_pred_p": float(pred.pvalue),
-        "kyle_pred_r2": float(pred.rvalue ** 2),                 # the honest number
-        "amihud_slope": float(amihud.slope), "amihud_p": float(amihud.pvalue),
+        "kyle_pred_r2": float(pred.rvalue ** 2),
+        "amihud": amihud,                                         # |r| per $1B traded
+        "volvol_slope": float(volvol.slope), "volvol_p": float(volvol.pvalue),
+        "volvol_r2": float(volvol.rvalue ** 2),
     }
 
 
@@ -103,9 +116,11 @@ def cusum_events(series, h=5.0):
         sp = max(0.0, sp + x)
         sn = min(0.0, sn + x)
         if sp > h:
-            sp = 0.0; events.append(i)
+            sp = 0.0
+            events.append(i)
         elif sn < -h:
-            sn = 0.0; events.append(i)
+            sn = 0.0
+            events.append(i)
     return events
 
 
@@ -119,7 +134,7 @@ def significant_threshold(df, move=0.02, horizon=1):
     d = d.dropna(subset=["big_move"])
     X = d[["vol_z", "signed_vol_z"]].values
     y = d["big_move"].values
-    if y.sum() < 10:
+    if y.sum() < 10 or (len(y) - y.sum()) < 10:
         return {"error": "too few big-move events"}
     # no class balancing here: we want interpretable probabilities near the base rate
     with np.errstate(all="ignore"):          # benign transient LBFGS FP warnings
@@ -147,11 +162,16 @@ if __name__ == "__main__":
     df = add_flow_features(df)
 
     kl = kyle_lambda(df)
-    star = lambda p: "***" if p < 0.01 else "**" if p < 0.05 else "(ns)"
+
+    def star(p):
+        return "***" if p < 0.01 else "**" if p < 0.05 else "(ns)"
+
     print(f"  Kyle λ PREDICTIVE (flow->next ret) = {kl['kyle_pred_lambda']:+.5f}  "
-          f"p={kl['kyle_pred_p']:.4f} {star(kl['kyle_pred_p'])}  R²={kl['kyle_pred_r2']:.3f}  (honest)")
+          f"p={kl['kyle_pred_p']:.4f} {star(kl['kyle_pred_p'])}  R²={kl['kyle_pred_r2']:.3f}")
     print(f"  (contemporaneous R²={kl['kyle_contemp_r2']:.2f} — inflated by construction, ignored)")
-    print(f"  Amihud illiquidity  = {kl['amihud_slope']:+.2e}  p={kl['amihud_p']:.4f} {star(kl['amihud_p'])}")
+    print(f"  Amihud illiquidity (|r| per $1B) = {kl['amihud']:.4f}")
+    print(f"  Volume–volatility OLS (|r| on volume) slope={kl['volvol_slope']:+.2e}  "
+          f"p={kl['volvol_p']:.2e} {star(kl['volvol_p'])}  R²={kl['volvol_r2']:.3f}")
 
     ev = cusum_events(df["signed_vol_z"], h=5.0)
     print(f"  CUSUM significant-flow events (h=5): {len(ev)}")

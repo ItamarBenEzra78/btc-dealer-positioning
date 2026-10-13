@@ -1,16 +1,16 @@
 """
-anomalies.py — Turn the article's phenomena into detectable events.
+anomalies.py — Turn the positioning thesis's phenomena into detectable events.
 
-Two tiers, split honestly by what free history allows:
+Two tiers, split by what free history allows:
 
   BACKTESTABLE NOW (deep history via price + DVOL)
     - vol_regime      : DVOL-based regime label (proxy for the gamma regime)
     - dvol_spike      : standardised jump in implied vol -> an event to study
-    These let us test the article's core mechanical claim *today*: does market
-    behaviour (forward realized vol, return persistence) differ by vol regime?
+    These let us test the core mechanical claim today: does market behaviour
+    (forward realized vol, return persistence) differ by vol regime?
 
   LIVE DETECTORS (GEX-native, accrue as the snapshot DB grows)
-    - pin_setup       : encodes the article's exact max-pain pin conditions
+    - pin_setup       : encodes the thesis's max-pain pin conditions
                         (positive gamma + low DTE + price near max pain)
     The true gamma-regime / pin backtest matures via data_layer's forward collector.
 """
@@ -23,26 +23,40 @@ import pandas as pd
 # BACKTESTABLE NOW
 # ----------------------------------------------------------------------------
 def add_forward_returns(df, horizons=(1, 3, 7)):
+    """Add forward log-return and forward realized vol for each horizon.
+
+    fwd_ret_h = log(close[t+h]) - log(close[t])
+    fwd_rv_h  = std(logret[t+1 .. t+h]) annualised, in %.
+    Realized vol needs at least two returns, so horizon 1 gets no fwd_rv column.
+    """
     df = df.copy()
     logc = np.log(df["close"])
     for h in horizons:
         df[f"fwd_ret_{h}"] = logc.shift(-h) - logc
-        # forward realized vol = std of logret[t+1 .. t+h], annualised %
-        # rolling(h).std() at t+h covers t+1..t+h; shift(-h) brings it back to t
-        df[f"fwd_rv_{h}"] = df["logret"].rolling(h).std().shift(-h) * np.sqrt(365) * 100
+        if h >= 2:
+            # rolling(h).std() at t+h covers t+1..t+h; shift(-h) brings it back to t
+            df[f"fwd_rv_{h}"] = df["logret"].rolling(h).std().shift(-h) * np.sqrt(365) * 100
     return df
 
 
 def add_regime_labels(df, dvol_window=90):
     """Label each day's implied-vol regime relative to its trailing median.
 
-    'elevated' vs 'calm' is our observable proxy for the dealer gamma regime:
-    the article's mechanism predicts calmer, stickier tape when dealers dampen
-    and wilder tape when they amplify.
+    'elevated' vs 'calm' is the observable proxy for the dealer gamma regime:
+    the thesis predicts calmer, stickier tape when dealers dampen and wilder
+    tape when they amplify.
+
+    Days where DVOL (or its trailing median) is missing get a NaN regime, not
+    'calm'. An earlier version used np.where(dvol > med, ...), which silently
+    labelled every NaN comparison as 'calm' and polluted the calm sample with
+    the pre-DVOL history.
     """
     df = df.copy()
     med = df["dvol"].rolling(dvol_window, min_periods=20).median()
-    df["dvol_regime"] = np.where(df["dvol"] > med, "elevated", "calm")
+    valid = df["dvol"].notna() & med.notna()
+    regime = pd.Series(np.nan, index=df.index, dtype=object)
+    regime[valid] = np.where(df.loc[valid, "dvol"] > med[valid], "elevated", "calm")
+    df["dvol_regime"] = regime
     df["elevated"] = (df["dvol_regime"] == "elevated").astype(int)
     df["dvol_chg"] = df["dvol"].diff()
     mu = df["dvol_chg"].rolling(dvol_window, min_periods=20).mean()
@@ -60,11 +74,11 @@ def detect_dvol_spikes(df, z_thresh=2.0):
 # LIVE DETECTORS (GEX-native)
 # ----------------------------------------------------------------------------
 def pin_setup(snap, near_pct=0.015):
-    """Does the current snapshot meet the article's max-pain pin conditions?
+    """Does the current snapshot meet the max-pain pin conditions?
 
     Returns each condition + an overall flag, so the dashboard can show *why*.
-    Conditions (from the article): positive gamma regime, low DTE (0-3),
-    and spot already near the (near-expiry) max pain.
+    Conditions: positive gamma regime, low DTE (0-3), and spot already near the
+    (near-expiry) max pain.
     """
     spot = snap["spot"]
     mp = snap.get("max_pain_near")
@@ -89,7 +103,7 @@ if __name__ == "__main__":
     spikes = detect_dvol_spikes(df)
 
     print(f"Rows: {len(df)}")
-    reg = df["dvol_regime"].value_counts()
+    reg = df["dvol_regime"].value_counts(dropna=False)
     print(f"Regime split: {reg.to_dict()}")
     print(f"DVOL spike events (|z|>2): {len(spikes)}")
     print("\nSample (recent):")

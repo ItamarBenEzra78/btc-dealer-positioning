@@ -2,15 +2,14 @@
 phenomenon.py — A general engine to statistically analyze ANY market phenomenon.
 
 You define a phenomenon as a boolean condition (the "event"); the engine runs the
-full battery automatically and returns an honest verdict:
+full battery automatically and returns a result dict:
 
   · event study        — cumulative abnormal return (CAR) around the event
   · forward return      — event days vs the rest (Welch, Mann-Whitney, permutation)
   · forward volatility  — event days vs the rest (Levene: does the event change vol?)
   · big-move odds       — P(|move| >= X%) on event days vs baseline (two-proportion z)
 
-This is what turns the project from "6 fixed tests" into a reusable instrument:
-point it at a condition, get a rigorous read on whether it matters.
+Point it at a condition and it reports whether that condition matters.
 
 Example:
     df = load()
@@ -113,8 +112,8 @@ def _print(r):
               f"   z p={b['z_p']} {_sig(b['z_p'])}")
 
 
-def load():
-    df = pd.read_csv("data/market_daily.csv", parse_dates=["date"])
+def load(path="data/market_daily.csv"):
+    df = pd.read_csv(path, parse_dates=["date"])
     return add_flow_features(add_regime_labels(add_forward_returns(df)))
 
 
