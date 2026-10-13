@@ -1,0 +1,11 @@
+{
+  "n_returns": 730,
+  "date_start": "2024-07-13",
+  "date_end": "2026-07-13",
+  "low_mean_pct": 0.131,
+  "low_sd_pct": 1.55,
+  "low_stay": 0.941,
+  "high_mean_pct": -0.275,
+  "high_sd_pct": 3.59,
+  "high_stay": 0.873
+}
